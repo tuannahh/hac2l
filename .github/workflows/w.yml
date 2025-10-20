@@ -5,25 +5,23 @@ jobs:
   win-msys2:
     runs-on: windows-latest
     steps:
-      # 1) Lấy Atmosphere/libraries
-      - name: Checkout Atmosphere (libraries only)
+      - name: Checkout Atmosphere (libraries + tạo tools/)
         uses: actions/checkout@v4
         with:
           repository: Atmosphere-NX/Atmosphere
           path: atmosphere
           sparse-checkout: |
             libraries
+            tools
           sparse-checkout-cone-mode: false
 
-      # 2) Lấy hac2l đặt vào atmosphere/tools/hac2l
-      - name: Checkout hac2l into Atmosphere tree
+      - name: Checkout hac2l vào atmosphere/tools/hac2l
         uses: actions/checkout@v4
         with:
           repository: Atmosphere-NX/hac2l
           path: atmosphere/tools/hac2l
 
-      # 3) MSYS2 toolchain
-      - name: Setup MSYS2 (UCRT64)
+      - name: MSYS2 toolchain
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
@@ -37,35 +35,14 @@ jobs:
             mingw-w64-ucrt-x86_64-zstd
             mingw-w64-ucrt-x86_64-lz4
 
-      # 4) Kiểm tra template
-      - name: Verify template path
-        shell: msys2 {0}
-        run: test -f atmosphere/libraries/config/templates/stratosphere.mk && echo "templates OK"
-
-      # 5) Build ngay trong tools/hac2l, ép LIBRARIES đúng
       - name: Build
         shell: msys2 {0}
         working-directory: atmosphere/tools/hac2l
-        env:
-          LIBRARIES: ${{ github.workspace }}/atmosphere/libraries
         run: |
-          set -e
-          make -j"$(nproc)" LIBRARIES="$LIBRARIES" || {
-            echo "List targets for debug:"; make -pRrq -f Makefile : 2>/dev/null | \
-              awk -v RS= -F: '/^[^.#%][^:]*:([^=]|$)/ {print $1}' | sort -u | sed -n '1,200p'
-            exit 2
-          }
-
-      # 6) Thu binary
-      - name: Collect binary
-        shell: msys2 {0}
-        working-directory: atmosphere/tools/hac2l
-        run: |
-          set -e
-          f="$(find . -type f \( -iname 'hac2l.exe' -o -name 'hac2l' \) | head -n 1 || true)"
-          [ -n "$f" ] || (echo "hac2l binary not found"; exit 1)
+          make -j"$(nproc)" || make release || make host_release
+          f="$(find . -type f \( -iname 'hac2l.exe' -o -name 'hac2l' \) | head -n 1)"
+          [ -n "$f" ] || { echo "no binary"; exit 1; }
           cp "$f" "$GITHUB_WORKSPACE/hac2l.exe" 2>/dev/null || { cp "$f" "$GITHUB_WORKSPACE/hac2l" && mv "$GITHUB_WORKSPACE/hac2l" "$GITHUB_WORKSPACE/hac2l.exe"; }
-          ls -l "$GITHUB_WORKSPACE/hac2l.exe"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
