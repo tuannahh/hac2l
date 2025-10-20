@@ -5,8 +5,7 @@ jobs:
   win-msys2:
     runs-on: windows-latest
     steps:
-      - name: Checkout hac2l
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Checkout Atmosphere (libraries only)
         uses: actions/checkout@v4
@@ -29,38 +28,33 @@ jobs:
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-zlib
             mingw-w64-ucrt-x86_64-zstd
-            mingw-w64-ucrt-x86_64-liblz4
+            mingw-w64-ucrt-x86_64-lz4
 
       - name: Verify templates
         shell: msys2 {0}
         run: test -f atmosphere/libraries/config/templates/stratosphere.mk && echo "templates OK"
 
-      - name: Build host binary (try targets)
+      - name: Build (try host targets)
         shell: msys2 {0}
         run: |
           set -e
           export LIBRARIES=./atmosphere/libraries
-          ok=0
           for T in generic generic_release release_generic host host_release; do
-            echo ">>> Try target: $T"
-            if make -j"$(nproc)" $T LIBRARIES="$LIBRARIES"; then
-              ok=1; echo "Built target: $T"; break
-            fi
+            echo ">>> try $T"
+            if make -j"$(nproc)" $T LIBRARIES="$LIBRARIES"; then exit 0; fi
           done
-          test $ok -eq 1
+          echo "no host target matched"; exit 2
 
-      - name: Locate output
+      - name: Find output
         shell: msys2 {0}
         run: |
           set -e
           f="$(find . -type f \( -iname 'hac2l.exe' -o -name 'hac2l' \) | head -n 1)"
-          echo "FOUND=$f"
-          if [ ! -f "$f" ]; then echo "not found"; exit 1; fi
-          cp "$f" hac2l.exe 2>/dev/null || { cp "$f" hac2l; mv hac2l hac2l.exe; }
+          [ -n "$f" ] || (echo "not found" && exit 1)
+          cp "$f" hac2l.exe 2>/dev/null || { cp "$f" hac2l && mv hac2l hac2l.exe; }
           test -f hac2l.exe
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: hac2l-windows-x64
           path: hac2l.exe
