@@ -1,15 +1,11 @@
 name: build-hac2l-windows
-
-on:
-  push:
-  pull_request:
-  workflow_dispatch:
+on: [push, pull_request, workflow_dispatch]
 
 jobs:
   windows-msys2:
     runs-on: windows-latest
     steps:
-      - name: Checkout
+      - name: Checkout hac2l
         uses: actions/checkout@v4
 
       - name: Setup MSYS2
@@ -22,15 +18,28 @@ jobs:
             make
             mingw-w64-ucrt-x86_64-toolchain
 
-      - name: Build with make
+      # quan trọng: cung cấp templates stratosphere đúng vị trí ../../../libraries
+      - name: Fetch Atmosphere libraries (stratosphere templates)
+        shell: bash
+        run: |
+          set -e
+          mkdir -p "$GITHUB_WORKSPACE/../../../"
+          cd "$GITHUB_WORKSPACE/../../../"
+          if [ ! -d libraries ]; then
+            git clone --depth 1 https://github.com/Atmosphere-NX/libraries
+          fi
+          ls -la libraries/config/templates || { echo "missing templates"; exit 1; }
+
+      - name: Build generic_windows
         shell: msys2 {0}
         run: |
-          make -j"$(nproc)"
+          make -j"$(nproc)" generic_windows
 
       - name: Ensure .exe name
         shell: bash
         run: |
           if [ ! -f hac2l.exe ] && [ -f hac2l ]; then mv hac2l hac2l.exe; fi
+          test -f hac2l.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
