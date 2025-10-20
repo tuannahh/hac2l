@@ -8,11 +8,15 @@ jobs:
       - name: Checkout hac2l
         uses: actions/checkout@v4
 
-      - name: Checkout Atmosphere libraries
+      # Lấy đúng thư mục libraries từ monorepo Atmosphere
+      - name: Checkout Atmosphere (libraries only)
         uses: actions/checkout@v4
         with:
-          repository: Atmosphere-NX/libraries
-          path: libraries   # <workspace>/libraries
+          repository: Atmosphere-NX/Atmosphere
+          path: atmosphere
+          sparse-checkout: |
+            libraries
+          sparse-checkout-cone-mode: false
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
@@ -23,11 +27,18 @@ jobs:
             git
             make
             mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-zlib
+
+      - name: Debug paths
+        shell: msys2 {0}
+        run: |
+          test -f atmosphere/libraries/config/templates/stratosphere.mk && echo "templates OK"
 
       - name: Build generic_windows
         shell: msys2 {0}
         run: |
-          make -j"$(nproc)" generic_windows LIBRARIES=./libraries
+          make -j"$(nproc)" generic_windows LIBRARIES=./atmosphere/libraries
 
       - name: Ensure .exe name
         shell: bash
