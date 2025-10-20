@@ -5,18 +5,25 @@ jobs:
   win-msys2:
     runs-on: windows-latest
     steps:
-      # Lấy đúng thư mục theo cấu trúc Atmosphere
-      - name: Checkout Atmosphere (libraries + tools/hac2l)
+      # 1) Lấy Atmosphere/libraries
+      - name: Checkout Atmosphere (libraries only)
         uses: actions/checkout@v4
         with:
           repository: Atmosphere-NX/Atmosphere
           path: atmosphere
           sparse-checkout: |
             libraries
-            tools/hac2l
           sparse-checkout-cone-mode: false
 
-      - name: Setup MSYS2
+      # 2) Lấy hac2l đặt vào atmosphere/tools/hac2l
+      - name: Checkout hac2l into Atmosphere tree
+        uses: actions/checkout@v4
+        with:
+          repository: Atmosphere-NX/hac2l
+          path: atmosphere/tools/hac2l
+
+      # 3) MSYS2 toolchain
+      - name: Setup MSYS2 (UCRT64)
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
@@ -30,40 +37,33 @@ jobs:
             mingw-w64-ucrt-x86_64-zstd
             mingw-w64-ucrt-x86_64-lz4
 
+      # 4) Kiểm tra template
       - name: Verify template path
         shell: msys2 {0}
-        run: |
-          test -f atmosphere/libraries/config/templates/stratosphere.mk || (echo "templates missing" && exit 1)
+        run: test -f atmosphere/libraries/config/templates/stratosphere.mk && echo "templates OK"
 
-      - name: List make targets
+      # 5) Build ngay trong tools/hac2l, ép LIBRARIES đúng
+      - name: Build
         shell: msys2 {0}
         working-directory: atmosphere/tools/hac2l
-        run: |
-          make -pRrq -f Makefile : 2>/dev/null | \
-            awk -v RS= -F: '/^[^.#%][^:]*:([^=]|$)/ {print $1}' | \
-            sort -u | sed -n '1,200p'
-
-      - name: Build hac2l (auto-pick target)
-        shell: msys2 {0}
-        working-directory: atmosphere/tools/hac2l
+        env:
+          LIBRARIES: ${{ github.workspace }}/atmosphere/libraries
         run: |
           set -e
-          # ưu tiên host build cho Windows runner
-          for T in host_release release all; do
-            echo ">>> try target: $T"
-            if make -j"$(nproc)" "$T"; then
-              touch .built && break
-            fi
-          done
-          test -f .built || (echo "no target matched; try default 'make'"; make -j"$(nproc)")
+          make -j"$(nproc)" LIBRARIES="$LIBRARIES" || {
+            echo "List targets for debug:"; make -pRrq -f Makefile : 2>/dev/null | \
+              awk -v RS= -F: '/^[^.#%][^:]*:([^=]|$)/ {print $1}' | sort -u | sed -n '1,200p'
+            exit 2
+          }
 
+      # 6) Thu binary
       - name: Collect binary
         shell: msys2 {0}
         working-directory: atmosphere/tools/hac2l
         run: |
           set -e
           f="$(find . -type f \( -iname 'hac2l.exe' -o -name 'hac2l' \) | head -n 1 || true)"
-          [ -n "$f" ] || (echo "hac2l binary not found" && exit 1)
+          [ -n "$f" ] || (echo "hac2l binary not found"; exit 1)
           cp "$f" "$GITHUB_WORKSPACE/hac2l.exe" 2>/dev/null || { cp "$f" "$GITHUB_WORKSPACE/hac2l" && mv "$GITHUB_WORKSPACE/hac2l" "$GITHUB_WORKSPACE/hac2l.exe"; }
           ls -l "$GITHUB_WORKSPACE/hac2l.exe"
 
