@@ -8,6 +8,7 @@ jobs:
       - name: Checkout hac2l
         uses: actions/checkout@v4
 
+      # lấy đúng "libraries" từ monorepo Atmosphere
       - name: Checkout Atmosphere (libraries only)
         uses: actions/checkout@v4
         with:
@@ -33,23 +34,43 @@ jobs:
 
       - name: Verify templates
         shell: msys2 {0}
-        run: test -f atmosphere/libraries/config/templates/stratosphere.mk && echo templates OK
+        run: |
+          test -f atmosphere/libraries/config/templates/stratosphere.mk && echo "templates OK"
 
-      - name: Build rx_release
+      # dò target hợp lệ rồi build
+      - name: Build
         shell: msys2 {0}
         env:
-          LIBRARIES: ./atmosphere/libraries
+          LIBRARIES: ${{ github.workspace }}/atmosphere/libraries
         run: |
-          make -j"$(nproc)" rx_release LIBRARIES="$LIBRARIES"
+          set -e
+          echo "LIBRARIES=$LIBRARIES"
+          # liệt kê target có trong Makefile
+          make -pRrq -f Makefile : 2>/dev/null | \
+            awk -v RS= -F: '/^[^.#%][^:]*:([^=]|$)/ {print $1}' | \
+            sort -u > targets.txt
+          echo "Targets:" && sed -n '1,120p' targets.txt
+          # ưu tiên các tên khả dĩ
+          CHOSEN=""
+          for t in release all nx_release host_release; do
+            grep -qx "$t" targets.txt && CHOSEN="$t" && break
+          done
+          if [ -z "$CHOSEN" ]; then
+            echo "No known target found; try default 'make'"
+            make -j"$(nproc)" LIBRARIES="$LIBRARIES"
+          else
+            echo "Building target: $CHOSEN"
+            make -j"$(nproc)" "$CHOSEN" LIBRARIES="$LIBRARIES"
+          fi
 
-      - name: Find output
+      - name: Locate output
         shell: msys2 {0}
         run: |
           set -e
-          f="$(find . -type f \( -iname 'hac2l.exe' -o -name 'hac2l' \) | head -n 1)"
-          [ -n "$f" ]
+          f="$(find . -type f \( -iname 'hac2l.exe' -o -name 'hac2l' \) | head -n 1 || true)"
+          [ -n "$f" ] || { echo "hac2l binary not found"; exit 1; }
           cp "$f" hac2l.exe 2>/dev/null || { cp "$f" hac2l && mv hac2l hac2l.exe; }
-          test -f hac2l.exe
+          test -f hac2l.exe && ls -l hac2l.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
